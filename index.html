@@ -1,0 +1,676 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>500 & 502 Windmill Rd – Parcels</title>
+
+  <!-- Leaflet -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+        integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+          integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+
+  <!-- Esri Leaflet -->
+  <script src="https://unpkg.com/esri-leaflet@3.0.12/dist/esri-leaflet.js"></script>
+
+  <!-- JSZip for KMZ creation -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+
+  <style>
+    html, body { height: 100%; margin: 0; }
+    #map { height: 100%; width: 100%; }
+    .legend {
+      position: absolute; bottom: 16px; left: 16px;
+      background: rgba(255,255,255,0.92);
+      padding: 10px 12px; border-radius: 10px;
+      box-shadow: 0 1px 12px rgba(0,0,0,0.18);
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+      font-size: 13px; line-height: 1.35;
+      max-width: 360px;
+      z-index: 1000;
+    }
+    .legend .row { margin-top: 6px; }
+    .swatch { display: inline-block; width: 12px; height: 12px; margin-right: 6px; vertical-align: -2px; border: 2px solid #000; border-radius: 3px; }
+    .note { color: #444; font-size: 12px; margin-top: 8px; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #f2f2f2; margin-top: 8px; font-size: 12px; }
+  </style>
+</head>
+<body>
+<div id="map"></div>
+
+<div class="legend">
+  <div><b>Alamosa County Parcels</b></div>
+  <div class="row">
+    <span class="swatch" style="background: rgba(0, 136, 255, 0.12); border-color: #0088ff;"></span>
+    <b>500 Windmill Rd</b> (Lot 1 ≈ 3.61 ac per contract)
+  </div>
+  <div class="row">
+    <span class="swatch" style="background: rgba(0, 200, 90, 0.12); border-color: #00c85a;"></span>
+    <b>502 Windmill Rd</b> (Lot 2 ≈ 5.16 ac per contract)
+  </div>
+  <div class="note">
+    Parcel boundaries are based on provided coordinates and are drawn manually to match Regrid imagery.<br/>
+    <b>Note:</b> Always verify boundaries with Alamosa County Assessor or licensed surveyor before making any decisions.
+  </div>
+  <div class="pill">Tip: click a parcel to see attributes</div>
+  <button onclick="window.open('https://earth.google.com/web/@37.65455,-105.58175,2386a,500d,35y,0h,45t,0r', '_blank')" style="margin-top:8px; padding:8px 12px; background:#4285F4; color:white; border:none; border-radius:6px; cursor:pointer; font-size:13px; font-weight:600; width:100%; box-shadow:0 1px 4px rgba(0,0,0,0.2);">
+    🌎 View in Google Earth 3D
+  </button>
+</div>
+
+<script>
+  // Better centered / closer to the parcels
+  const map = L.map('map', { zoomControl: true }).setView([37.65455, -105.58175], 17);
+
+  // Basemap layers
+  const imagery = L.esri.basemapLayer('Imagery').addTo(map);
+  const labels = L.esri.basemapLayer('ImageryLabels').addTo(map);
+  const transportation = L.esri.basemapLayer('ImageryTransportation').addTo(map);
+
+  // Topographic map layer (shows water features, contours, trails)
+  const topo = L.esri.basemapLayer('Topographic');
+
+  // Streets layer (shows water bodies and terrain features)
+  const streets = L.esri.basemapLayer('Streets');
+
+  // Layer control for switching between different views
+  const baseMaps = {
+    "Satellite Imagery": L.layerGroup([imagery, labels, transportation]),
+    "Topographic (Water & Terrain)": topo,
+    "Streets (Water Features)": streets
+  };
+  L.control.layers(baseMaps).addTo(map);
+
+  // Styles
+  const style500 = { color: "#0088ff", weight: 3, fillColor: "#0088ff", fillOpacity: 0.12 };
+  const style502 = { color: "#00c85a", weight: 3, fillColor: "#00c85a", fillOpacity: 0.12 };
+
+  // 502 Windmill Rd (Lot 2, ~5.16 acres) - Northern parcel
+  // Coordinates manually measured on map (most accurate)
+  const parcel502Coords = [
+    [37.65547, -105.58236],  // Point A
+    [37.65507, -105.58126],  // Point B
+    [37.65643, -105.58046],  // Point C
+    [37.65693, -105.58180],  // Point D
+    [37.65643, -105.58210],  // Point E
+    [37.65630, -105.58216],  // Point F
+    [37.65616, -105.58220],  // Point G
+    [37.65600, -105.58224],  // Point H
+    [37.65547, -105.58236]   // close (back to Point A)
+  ];
+
+  // 500 Windmill Rd (Lot 1, ~3.61 acres) - Southern parcel
+  // Coordinates manually measured on map (most accurate)
+  const parcel500Coords = [
+    [37.65378, -105.58263],  // Point A
+    [37.65369, -105.58207],  // Point B
+    [37.65507, -105.58126],  // Point C
+    [37.65547, -105.58236],  // Point D
+    [37.65415, -105.58266],  // Point E
+    [37.65411, -105.58267],  // Point F
+    [37.65407, -105.58268],  // Point G
+    [37.65405, -105.58268],  // Point H
+    [37.65401, -105.58268],  // Point I
+    [37.65394, -105.58268],  // Point J
+    [37.65387, -105.58267],  // Point K
+    [37.65378, -105.58263]   // close (back to Point A)
+  ];
+
+  // Create polygon layers
+  const layer500 = L.polygon(parcel500Coords, style500).addTo(map);
+  const layer502 = L.polygon(parcel502Coords, style502).addTo(map);
+
+  // Popups
+  layer500.bindPopup(`
+    <div style="max-width:400px;">
+      <h3 style="margin:0 0 8px 0;">500 Windmill Rd</h3>
+      <table style="border-collapse: collapse; width:100%; font-size:12px;">
+        <tr><td style="padding:3px 8px 3px 0; color:#444;"><b>Address</b></td><td style="padding:3px 0;">500 Windmill Rd, Mosca, CO 81146</td></tr>
+        <tr><td style="padding:3px 8px 3px 0; color:#444;"><b>Parcel ID</b></td><td style="padding:3px 0;">499931103011</td></tr>
+        <tr><td style="padding:3px 8px 3px 0; color:#444;"><b>Lot Size</b></td><td style="padding:3px 0;">3.61 Acres</td></tr>
+        <tr><td style="padding:3px 8px 3px 0; color:#444;"><b>Subdivision</b></td><td style="padding:3px 0;">Zapata Unit 3</td></tr>
+      </table>
+
+      <details style="margin-top:8px;">
+        <summary style="cursor:pointer; font-weight:600; color:#444; font-size:12px;">Owner Information</summary>
+        <div style="font-size:11px; margin-top:4px; padding:4px 0;">
+          <b>Owner:</b> PARAN, PHILIP COLLIN<br>
+          <b>Second Owner:</b> MATTHEWS, KARLEANNE<br>
+          <b>Mailing Address:</b> 9207 E Star Hill Ln, Lone Tree, CO 80124
+        </div>
+      </details>
+
+      <details style="margin-top:6px;">
+        <summary style="cursor:pointer; font-weight:600; color:#444; font-size:12px;">Sales & Value</summary>
+        <div style="font-size:11px; margin-top:4px; padding:4px 0;">
+          <b>Last Transfer:</b> April 23, 2021<br>
+          <b>Federal Opportunity Zone:</b> Yes<br>
+          <b>Opportunity Zone Tract:</b> 08003960000
+        </div>
+      </details>
+
+      <details style="margin-top:6px;">
+        <summary style="cursor:pointer; font-weight:600; color:#444; font-size:12px;">Zoning & Land Use</summary>
+        <div style="font-size:11px; margin-top:4px; padding:4px 0;">
+          <b>Zoning Type:</b> Residential<br>
+          <b>Zoning Subtype:</b> Single Family<br>
+          <b>Land Use:</b> Natural resources-related / Agriculture, forestry, fishing and hunting<br>
+          <b>Ownership:</b> Private
+        </div>
+      </details>
+
+      <details style="margin-top:6px;">
+        <summary style="cursor:pointer; font-weight:600; color:#444; font-size:12px;">Geographic Information</summary>
+        <div style="font-size:11px; margin-top:4px; padding:4px 0;">
+          <b>Centroid:</b> 37.654584, -105.582085<br>
+          <b>Elevation Range:</b> 2,383.74 - 2,388.38 ft<br>
+          <b>Census Tract:</b> 08003960000<br>
+          <b>School District:</b> Sangre de Cristo School District RE-22J
+        </div>
+      </details>
+
+      <details style="margin-top:6px;">
+        <summary style="cursor:pointer; font-weight:600; color:#444; font-size:12px;">Legal Description</summary>
+        <div style="font-size:11px; margin-top:4px; padding:4px 0;">
+          ZAPATA UNIT 3 RESUB POR UNIT 2 & AMENDED FINAL PLAT LOT 1 BLK 3 3.61AC INCLUDING AN UNDIVIDED INTEREST IN COMMON PROPERTY JWD REC #380554 04-22-2021
+        </div>
+      </details>
+
+      <details style="margin-top:6px;">
+        <summary style="cursor:pointer; font-weight:600; color:#444; font-size:12px;">Boundary Coordinates</summary>
+        <div style="font-size:11px; margin-top:4px; font-family:monospace;">
+          A: 37.65378, -105.58263<br>
+          B: 37.65369, -105.58207<br>
+          C: 37.65507, -105.58126<br>
+          D: 37.65547, -105.58236<br>
+          E: 37.65415, -105.58266<br>
+          F: 37.65411, -105.58267<br>
+          G: 37.65407, -105.58268<br>
+          H: 37.65405, -105.58268<br>
+          I: 37.65401, -105.58268<br>
+          J: 37.65394, -105.58268<br>
+          K: 37.65387, -105.58267
+        </div>
+      </details>
+
+      <div style="margin-top:8px; display:flex; gap:4px;">
+        <button onclick="downloadGeoJSON500()" style="flex:1; padding:6px 8px; background:#0088ff; color:white; border:none; border-radius:4px; cursor:pointer; font-size:11px; font-weight:600;">📥 GeoJSON</button>
+        <button onclick="downloadKML500()" style="flex:1; padding:6px 8px; background:#0088ff; color:white; border:none; border-radius:4px; cursor:pointer; font-size:11px; font-weight:600;">📥 KML</button>
+        <button onclick="downloadKMZ500()" style="flex:1; padding:6px 8px; background:#0088ff; color:white; border:none; border-radius:4px; cursor:pointer; font-size:11px; font-weight:600;">📥 KMZ</button>
+      </div>
+    </div>
+  `);
+
+  function downloadGeoJSON500() {
+    const geojson = {
+      "type": "Feature",
+      "properties": {
+        "name": "500 Windmill Rd (Lot 1)",
+        "situs": "500 Windmill Rd",
+        "city": "Mosca",
+        "zip": "81146",
+        "parcel_id": "499931103011",
+        "acres_contract": 3.61,
+        "subdivision": "Zapata Unit 3",
+        "lot": "1"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[
+          [-105.58263, 37.65378],
+          [-105.58207, 37.65369],
+          [-105.58126, 37.65507],
+          [-105.58236, 37.65547],
+          [-105.58266, 37.65415],
+          [-105.58267, 37.65411],
+          [-105.58268, 37.65407],
+          [-105.58268, 37.65405],
+          [-105.58268, 37.65401],
+          [-105.58268, 37.65394],
+          [-105.58267, 37.65387],
+          [-105.58263, 37.65378]
+        ]]
+      }
+    };
+    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(geojson, null, 2));
+    const downloadAnchorNode = document.createElement('a');
+    downloadAnchorNode.setAttribute("href", dataStr);
+    downloadAnchorNode.setAttribute("download", "500_windmill_rd.geojson");
+    document.body.appendChild(downloadAnchorNode);
+    downloadAnchorNode.click();
+    downloadAnchorNode.remove();
+  }
+
+  function downloadKML500() {
+    const kml = `<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2">
+  <Document>
+    <name>500 Windmill Rd</name>
+    <description>Parcel boundary for 500 Windmill Rd, Mosca, CO 81146</description>
+    <Placemark>
+      <name>500 Windmill Rd (Lot 1)</name>
+      <description><![CDATA[
+        <b>Parcel ID:</b> 499931103011<br/>
+        <b>Address:</b> 500 Windmill Rd, Mosca, CO 81146<br/>
+        <b>Lot Size:</b> 3.61 Acres<br/>
+        <b>Subdivision:</b> Zapata Unit 3<br/>
+        <b>Owner:</b> PARAN, PHILIP COLLIN<br/>
+        <b>Last Transfer:</b> April 23, 2021
+      ]]></description>
+      <Style>
+        <LineStyle>
+          <color>ffff8800</color>
+          <width>3</width>
+        </LineStyle>
+        <PolyStyle>
+          <color>1fff8800</color>
+        </PolyStyle>
+      </Style>
+      <Polygon>
+        <outerBoundaryIs>
+          <LinearRing>
+            <coordinates>
+              -105.58263,37.65378,0
+              -105.58207,37.65369,0
+              -105.58126,37.65507,0
+              -105.58236,37.65547,0
+              -105.58266,37.65415,0
+              -105.58267,37.65411,0
+              -105.58268,37.65407,0
+              -105.58268,37.65405,0
+              -105.58268,37.65401,0
+              -105.58268,37.65394,0
+              -105.58267,37.65387,0
+              -105.58263,37.65378,0
+            </coordinates>
+          </LinearRing>
+        </outerBoundaryIs>
+      </Polygon>
+    </Placemark>
+  </Document>
+</kml>`;
+    const dataStr = "data:application/vnd.google-earth.kml+xml;charset=utf-8," + encodeURIComponent(kml);
+    const downloadAnchorNode = document.createElement('a');
+    downloadAnchorNode.setAttribute("href", dataStr);
+    downloadAnchorNode.setAttribute("download", "500_windmill_rd.kml");
+    document.body.appendChild(downloadAnchorNode);
+    downloadAnchorNode.click();
+    downloadAnchorNode.remove();
+  }
+
+  function downloadKMZ500() {
+    const kml = `<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2">
+  <Document>
+    <name>500 Windmill Rd</name>
+    <description>Parcel boundary for 500 Windmill Rd, Mosca, CO 81146</description>
+    <Placemark>
+      <name>500 Windmill Rd (Lot 1)</name>
+      <description><![CDATA[
+        <b>Parcel ID:</b> 499931103011<br/>
+        <b>Address:</b> 500 Windmill Rd, Mosca, CO 81146<br/>
+        <b>Lot Size:</b> 3.61 Acres<br/>
+        <b>Subdivision:</b> Zapata Unit 3<br/>
+        <b>Owner:</b> PARAN, PHILIP COLLIN<br/>
+        <b>Last Transfer:</b> April 23, 2021
+      ]]></description>
+      <Style>
+        <LineStyle>
+          <color>ffff8800</color>
+          <width>3</width>
+        </LineStyle>
+        <PolyStyle>
+          <color>1fff8800</color>
+        </PolyStyle>
+      </Style>
+      <Polygon>
+        <outerBoundaryIs>
+          <LinearRing>
+            <coordinates>
+              -105.58263,37.65378,0
+              -105.58207,37.65369,0
+              -105.58126,37.65507,0
+              -105.58236,37.65547,0
+              -105.58266,37.65415,0
+              -105.58267,37.65411,0
+              -105.58268,37.65407,0
+              -105.58268,37.65405,0
+              -105.58268,37.65401,0
+              -105.58268,37.65394,0
+              -105.58267,37.65387,0
+              -105.58263,37.65378,0
+            </coordinates>
+          </LinearRing>
+        </outerBoundaryIs>
+      </Polygon>
+    </Placemark>
+  </Document>
+</kml>`;
+    const zip = new JSZip();
+    zip.file("doc.kml", kml);
+    zip.generateAsync({type:"blob"}).then(function(content) {
+      const url = URL.createObjectURL(content);
+      const downloadAnchorNode = document.createElement('a');
+      downloadAnchorNode.setAttribute("href", url);
+      downloadAnchorNode.setAttribute("download", "500_windmill_rd.kmz");
+      document.body.appendChild(downloadAnchorNode);
+      downloadAnchorNode.click();
+      downloadAnchorNode.remove();
+      URL.revokeObjectURL(url);
+    });
+  }
+
+  layer502.bindPopup(`
+    <div style="max-width:400px;">
+      <h3 style="margin:0 0 8px 0;">502 Windmill Rd</h3>
+      <table style="border-collapse: collapse; width:100%; font-size:12px;">
+        <tr><td style="padding:3px 8px 3px 0; color:#444;"><b>Address</b></td><td style="padding:3px 0;">502 Windmill Rd, Mosca, CO 81146</td></tr>
+        <tr><td style="padding:3px 8px 3px 0; color:#444;"><b>Parcel ID</b></td><td style="padding:3px 0;">499931103002</td></tr>
+        <tr><td style="padding:3px 8px 3px 0; color:#444;"><b>Lot Size</b></td><td style="padding:3px 0;">5.17 Acres</td></tr>
+        <tr><td style="padding:3px 8px 3px 0; color:#444;"><b>Subdivision</b></td><td style="padding:3px 0;">Zapata Unit 3</td></tr>
+      </table>
+
+      <details style="margin-top:8px;">
+        <summary style="cursor:pointer; font-weight:600; color:#444; font-size:12px;">Owner Information</summary>
+        <div style="font-size:11px; margin-top:4px; padding:4px 0;">
+          <b>Owner:</b> PARAN, PHILIP COLLIN<br>
+          <b>Second Owner:</b> MATTHEWS, KARLEANNE<br>
+          <b>Mailing Address:</b> 9207 E Star Hill Ln, Lone Tree, CO 80124
+        </div>
+      </details>
+
+      <details style="margin-top:6px;">
+        <summary style="cursor:pointer; font-weight:600; color:#444; font-size:12px;">Sales & Value</summary>
+        <div style="font-size:11px; margin-top:4px; padding:4px 0;">
+          <b>Last Transfer:</b> April 23, 2021<br>
+          <b>Federal Opportunity Zone:</b> Yes<br>
+          <b>Opportunity Zone Tract:</b> 08003960000
+        </div>
+      </details>
+
+      <details style="margin-top:6px;">
+        <summary style="cursor:pointer; font-weight:600; color:#444; font-size:12px;">Zoning & Land Use</summary>
+        <div style="font-size:11px; margin-top:4px; padding:4px 0;">
+          <b>Zoning Type:</b> Residential<br>
+          <b>Zoning Subtype:</b> Single Family<br>
+          <b>Land Use:</b> Natural resources-related / Agriculture, forestry, fishing and hunting<br>
+          <b>Ownership:</b> Private
+        </div>
+      </details>
+
+      <details style="margin-top:6px;">
+        <summary style="cursor:pointer; font-weight:600; color:#444; font-size:12px;">Geographic Information</summary>
+        <div style="font-size:11px; margin-top:4px; padding:4px 0;">
+          <b>Centroid:</b> 37.656013, -105.581486<br>
+          <b>Elevation Range:</b> 2,383.18 - 2,389.3 ft<br>
+          <b>Census Tract:</b> 08003960000<br>
+          <b>School District:</b> Sangre de Cristo School District RE-22J
+        </div>
+      </details>
+
+      <details style="margin-top:6px;">
+        <summary style="cursor:pointer; font-weight:600; color:#444; font-size:12px;">Legal Description</summary>
+        <div style="font-size:11px; margin-top:4px; padding:4px 0;">
+          ZAPATA UNIT 3 RESUB POR UNIT 2 & AMENDED FINAL PLAT LOT 2 BLK 3 5.16AC INCLUDING AN UNDIVIDED INTEREST IN COMMON PROPERTY JWD REC #380554 04-22-2021
+        </div>
+      </details>
+
+      <details style="margin-top:6px;">
+        <summary style="cursor:pointer; font-weight:600; color:#444; font-size:12px;">Boundary Coordinates</summary>
+        <div style="font-size:11px; margin-top:4px; font-family:monospace;">
+          A: 37.65547, -105.58236<br>
+          B: 37.65507, -105.58126<br>
+          C: 37.65643, -105.58046<br>
+          D: 37.65693, -105.58180<br>
+          E: 37.65643, -105.58210<br>
+          F: 37.65630, -105.58216<br>
+          G: 37.65616, -105.58220<br>
+          H: 37.65600, -105.58224
+        </div>
+      </details>
+
+      <div style="margin-top:8px; display:flex; gap:4px;">
+        <button onclick="downloadGeoJSON502()" style="flex:1; padding:6px 8px; background:#00c85a; color:white; border:none; border-radius:4px; cursor:pointer; font-size:11px; font-weight:600;">📥 GeoJSON</button>
+        <button onclick="downloadKML502()" style="flex:1; padding:6px 8px; background:#00c85a; color:white; border:none; border-radius:4px; cursor:pointer; font-size:11px; font-weight:600;">📥 KML</button>
+        <button onclick="downloadKMZ502()" style="flex:1; padding:6px 8px; background:#00c85a; color:white; border:none; border-radius:4px; cursor:pointer; font-size:11px; font-weight:600;">📥 KMZ</button>
+      </div>
+    </div>
+  `);
+
+  function downloadGeoJSON502() {
+    const geojson = {
+      "type": "Feature",
+      "properties": {
+        "name": "502 Windmill Rd (Lot 2)",
+        "situs": "502 Windmill Rd",
+        "city": "Mosca",
+        "zip": "81146",
+        "parcel_id": "499931103002",
+        "acres_contract": 5.16,
+        "subdivision": "Zapata Unit 3",
+        "lot": "2"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[
+          [-105.58236, 37.65547],
+          [-105.58126, 37.65507],
+          [-105.58046, 37.65643],
+          [-105.58180, 37.65693],
+          [-105.58210, 37.65643],
+          [-105.58216, 37.65630],
+          [-105.58220, 37.65616],
+          [-105.58224, 37.65600],
+          [-105.58236, 37.65547]
+        ]]
+      }
+    };
+    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(geojson, null, 2));
+    const downloadAnchorNode = document.createElement('a');
+    downloadAnchorNode.setAttribute("href", dataStr);
+    downloadAnchorNode.setAttribute("download", "502_windmill_rd.geojson");
+    document.body.appendChild(downloadAnchorNode);
+    downloadAnchorNode.click();
+    downloadAnchorNode.remove();
+  }
+
+  function downloadKML502() {
+    const kml = `<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2">
+  <Document>
+    <name>502 Windmill Rd</name>
+    <description>Parcel boundary for 502 Windmill Rd, Mosca, CO 81146</description>
+    <Placemark>
+      <name>502 Windmill Rd (Lot 2)</name>
+      <description><![CDATA[
+        <b>Parcel ID:</b> 499931103002<br/>
+        <b>Address:</b> 502 Windmill Rd, Mosca, CO 81146<br/>
+        <b>Lot Size:</b> 5.17 Acres<br/>
+        <b>Subdivision:</b> Zapata Unit 3<br/>
+        <b>Owner:</b> PARAN, PHILIP COLLIN<br/>
+        <b>Last Transfer:</b> April 23, 2021
+      ]]></description>
+      <Style>
+        <LineStyle>
+          <color>ff5ac800</color>
+          <width>3</width>
+        </LineStyle>
+        <PolyStyle>
+          <color>1f5ac800</color>
+        </PolyStyle>
+      </Style>
+      <Polygon>
+        <outerBoundaryIs>
+          <LinearRing>
+            <coordinates>
+              -105.58236,37.65547,0
+              -105.58126,37.65507,0
+              -105.58046,37.65643,0
+              -105.58180,37.65693,0
+              -105.58210,37.65643,0
+              -105.58216,37.65630,0
+              -105.58220,37.65616,0
+              -105.58224,37.65600,0
+              -105.58236,37.65547,0
+            </coordinates>
+          </LinearRing>
+        </outerBoundaryIs>
+      </Polygon>
+    </Placemark>
+  </Document>
+</kml>`;
+    const dataStr = "data:application/vnd.google-earth.kml+xml;charset=utf-8," + encodeURIComponent(kml);
+    const downloadAnchorNode = document.createElement('a');
+    downloadAnchorNode.setAttribute("href", dataStr);
+    downloadAnchorNode.setAttribute("download", "502_windmill_rd.kml");
+    document.body.appendChild(downloadAnchorNode);
+    downloadAnchorNode.click();
+    downloadAnchorNode.remove();
+  }
+
+  function downloadKMZ502() {
+    const kml = `<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2">
+  <Document>
+    <name>502 Windmill Rd</name>
+    <description>Parcel boundary for 502 Windmill Rd, Mosca, CO 81146</description>
+    <Placemark>
+      <name>502 Windmill Rd (Lot 2)</name>
+      <description><![CDATA[
+        <b>Parcel ID:</b> 499931103002<br/>
+        <b>Address:</b> 502 Windmill Rd, Mosca, CO 81146<br/>
+        <b>Lot Size:</b> 5.17 Acres<br/>
+        <b>Subdivision:</b> Zapata Unit 3<br/>
+        <b>Owner:</b> PARAN, PHILIP COLLIN<br/>
+        <b>Last Transfer:</b> April 23, 2021
+      ]]></description>
+      <Style>
+        <LineStyle>
+          <color>ff5ac800</color>
+          <width>3</width>
+        </LineStyle>
+        <PolyStyle>
+          <color>1f5ac800</color>
+        </PolyStyle>
+      </Style>
+      <Polygon>
+        <outerBoundaryIs>
+          <LinearRing>
+            <coordinates>
+              -105.58236,37.65547,0
+              -105.58126,37.65507,0
+              -105.58046,37.65643,0
+              -105.58180,37.65693,0
+              -105.58210,37.65643,0
+              -105.58216,37.65630,0
+              -105.58220,37.65616,0
+              -105.58224,37.65600,0
+              -105.58236,37.65547,0
+            </coordinates>
+          </LinearRing>
+        </outerBoundaryIs>
+      </Polygon>
+    </Placemark>
+  </Document>
+</kml>`;
+    const zip = new JSZip();
+    zip.file("doc.kml", kml);
+    zip.generateAsync({type:"blob"}).then(function(content) {
+      const url = URL.createObjectURL(content);
+      const downloadAnchorNode = document.createElement('a');
+      downloadAnchorNode.setAttribute("href", url);
+      downloadAnchorNode.setAttribute("download", "502_windmill_rd.kmz");
+      document.body.appendChild(downloadAnchorNode);
+      downloadAnchorNode.click();
+      downloadAnchorNode.remove();
+      URL.revokeObjectURL(url);
+    });
+  }
+
+  // Fit bounds to show both parcels
+  const allBounds = L.latLngBounds(parcel500Coords.concat(parcel502Coords));
+  map.fitBounds(allBounds.pad(0.25));
+
+  // Centroid marker icons (small cross/plus symbols)
+  const centroidIcon500 = L.divIcon({
+    className: "",
+    html: "<div style='position:relative;width:16px;height:16px;'><div style='position:absolute;top:7px;left:0;width:16px;height:2px;background:#0088ff;'></div><div style='position:absolute;top:0;left:7px;width:2px;height:16px;background:#0088ff;'></div></div>",
+    iconSize: [16,16],
+    iconAnchor: [8,8]
+  });
+
+  const centroidIcon502 = L.divIcon({
+    className: "",
+    html: "<div style='position:relative;width:16px;height:16px;'><div style='position:absolute;top:7px;left:0;width:16px;height:2px;background:#00c85a;'></div><div style='position:absolute;top:0;left:7px;width:2px;height:16px;background:#00c85a;'></div></div>",
+    iconSize: [16,16],
+    iconAnchor: [8,8]
+  });
+
+  // Septic marker icons (circles)
+  const septicIcon = L.divIcon({
+    className: "",
+    html: "<div style='width:14px;height:14px;border-radius:50%;background:#ff4d4d;border:3px solid #fff;box-shadow:0 1px 10px rgba(0,0,0,.25)'></div>",
+    iconSize: [14,14],
+    iconAnchor: [7,7]
+  });
+
+  const backupSepticIcon = L.divIcon({
+    className: "",
+    html: "<div style='width:14px;height:14px;border-radius:50%;background:#ff9933;border:3px solid #fff;box-shadow:0 1px 10px rgba(0,0,0,.25)'></div>",
+    iconSize: [14,14],
+    iconAnchor: [7,7]
+  });
+
+  // Add centroid markers
+  function addCentroidMarkers() {
+    // 500 Windmill centroid (blue cross)
+    const centroid500 = [37.654584, -105.582085];
+    const marker500 = L.marker(centroid500, { icon: centroidIcon500 }).addTo(map);
+    marker500.bindPopup(
+      "<b>500 Windmill Rd - Centroid</b><br/>" +
+      "<b>Latitude:</b> 37.654584<br/>" +
+      "<b>Longitude:</b> -105.582085"
+    );
+
+    // 502 Windmill centroid (green cross)
+    const centroid502 = [37.656013, -105.581486];
+    const marker502 = L.marker(centroid502, { icon: centroidIcon502 }).addTo(map);
+    marker502.bindPopup(
+      "<b>502 Windmill Rd - Centroid</b><br/>" +
+      "<b>Latitude:</b> 37.656013<br/>" +
+      "<b>Longitude:</b> -105.581486"
+    );
+  }
+
+  // Add septic markers (offset ~20 feet east from centroids)
+  function addConceptualSepticMarker() {
+    // Offset ~20 feet east from centroid (502 Windmill)
+    // At this latitude: 20 feet ≈ 0.000070 degrees longitude
+    const center = [37.656013, -105.581416];
+    const marker = L.marker(center, { icon: septicIcon }).addTo(map);
+    marker.bindPopup(
+      "<b>Conceptual Septic Location - 502 Windmill</b><br/>" +
+      "<b>Latitude:</b> 37.656013<br/>" +
+      "<b>Longitude:</b> -105.581416<br/>" +
+      "<i>Approx. 20 feet east of centroid. Final location must follow county OWTS setbacks, perc results, and engineered design.</i>"
+    );
+  }
+
+  function addBackupSepticMarker() {
+    // Offset ~20 feet east from centroid (500 Windmill)
+    // At this latitude: 20 feet ≈ 0.000070 degrees longitude
+    const center = [37.654584, -105.582015];
+    const marker = L.marker(center, { icon: backupSepticIcon }).addTo(map);
+    marker.bindPopup(
+      "<b>Conceptual Septic Location - 500 Windmill</b><br/>" +
+      "<b>Latitude:</b> 37.654584<br/>" +
+      "<b>Longitude:</b> -105.582015<br/>" +
+      "<i>Approx. 20 feet east of centroid. Final location must follow county OWTS setbacks, perc results, and engineered design.</i>"
+    );
+  }
+
+  addCentroidMarkers();
+</script>
+</body>
+</html>
