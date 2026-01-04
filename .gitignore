@@ -1,0 +1,36 @@
+# macOS
+.DS_Store
+
+# IDE
+.vscode/
+.idea/
+
+# Dependencies
+node_modules/
+venv/
+env/
+*.pyc
+__pycache__/
+
+# Environment variables
+.env
+.env.local
+
+# Build outputs
+dist/
+build/
+*.egg-info/
+
+# Logs
+*.log
+logs/
+
+# Testing
+coverage/
+.coverage
+*.test.js.snap
+
+# Temporary files
+*.tmp
+*.temp
+.cache/
